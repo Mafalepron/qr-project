@@ -1,0 +1,5 @@
+python-telegram-bot
+httpx
+python-dotenv
+pyzbar
+Pillow
