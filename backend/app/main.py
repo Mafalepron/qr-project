@@ -87,8 +87,8 @@ async def update_qr_code_status(
 
 @app.get("/scanner", response_class=FileResponse, summary="Получить страницу сканера")
 async def get_scanner_page():
-    """Отдает HTML-страницу веб-приложения для сканирования QR-кодов."""
-    return "frontend/scanner.html"
+    file_path = os.path.join(os.path.dirname(__file__), "frontend", "scanner.html")
+    return FileResponse(file_path)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
