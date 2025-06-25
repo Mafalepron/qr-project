@@ -39,15 +39,47 @@
         }
         .success { background-color: #28a745; color: white; }
         .error { background-color: #dc3545; color: white; }
+        #qr-reader.success-border {
+            border: 3px solid #28a745 !important;
+            box-shadow: 0 0 10px #28a745;
+        }
+        #qr-reader.error-border {
+            border: 3px solid #dc3545 !important;
+            box-shadow: 0 0 10px #dc3545;
+        }
+        #scan-result-btn {
+            display: none;
+            margin-top: 30px;
+            width: 90vw;
+            max-width: 500px;
+            padding: 18px;
+            font-size: 1.3em;
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #scan-result-btn.success {
+            background: #28a745;
+            color: #fff;
+        }
+        #scan-result-btn.error {
+            background: #dc3545;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
 
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
+    <button id="scan-result-btn"></button>
 
     <script>
         const resultDiv = document.getElementById('qr-reader-results');
+        const qrReaderDiv = document.getElementById('qr-reader');
+        const resultBtn = document.getElementById('scan-result-btn');
         let lastScanTime = 0;
         const scanCooldown = 3000; // 3 секунды
 
@@ -72,20 +104,41 @@
             .then(data => {
                 resultDiv.style.display = 'block';
                 resultDiv.textContent = data.message;
+                resultBtn.style.display = 'block';
                 if (data.status === 'ok') {
                     resultDiv.className = 'success';
+                    qrReaderDiv.classList.remove('error-border');
+                    qrReaderDiv.classList.add('success-border');
+                    resultBtn.className = 'success';
+                    resultBtn.textContent = '✅ Сканирование успешно! Закрыть';
                 } else {
                     resultDiv.className = 'error';
+                    qrReaderDiv.classList.remove('success-border');
+                    qrReaderDiv.classList.add('error-border');
+                    resultBtn.className = 'error';
+                    resultBtn.textContent = '⛔ Ошибка сканирования! Закрыть';
                 }
-                if (Telegram.WebApp) {
-                    Telegram.WebApp.close();
-                }
+                resultBtn.onclick = () => {
+                    if (Telegram.WebApp) {
+                        Telegram.WebApp.close();
+                    }
+                };
             })
             .catch(error => {
                 console.error('Error:', error);
                 resultDiv.style.display = 'block';
                 resultDiv.className = 'error';
                 resultDiv.textContent = 'Ошибка сети при проверке кода.';
+                resultBtn.style.display = 'block';
+                qrReaderDiv.classList.remove('success-border');
+                qrReaderDiv.classList.add('error-border');
+                resultBtn.className = 'error';
+                resultBtn.textContent = '⛔ Ошибка сети! Закрыть';
+                resultBtn.onclick = () => {
+                    if (Telegram.WebApp) {
+                        Telegram.WebApp.close();
+                    }
+                };
             });
         }
 
