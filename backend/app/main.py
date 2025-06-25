@@ -14,19 +14,25 @@ app = FastAPI(title="QR Code Service")
 # В реальном проекте лучше использовать миграции (Alembic)
 @app.on_event("startup")
 async def startup():
+    """Создает таблицы в базе данных при запуске приложения, если их нет."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
-@app.get("/")
+@app.get("/", summary="Проверка работы сервиса")
 async def root():
+    """Корневой эндпоинт для проверки, что сервис запущен и работает."""
     return {"message": "QR Code Service is running"}
 
 
-@app.post("/qrcodes/", response_model=schemas.QRCode)
-async def create_qr_code(
+@app.post("/qrcodes/", response_model=schemas.QRCode, summary="Создать или получить QR-код")
+async def create_qr_code_endpoint(
     qr_code: schemas.QRCodeCreate, db: AsyncSession = Depends(get_db)
 ):
+    """
+    Создает QR-код для пользователя по его Telegram ID.
+    Если у пользователя уже есть код, возвращает существующий.
+    """
     return await crud.create_qr_code(db=db, qr_code=qr_code)
 
 
@@ -44,8 +50,9 @@ async def read_qr_code(qr_code_id: uuid.UUID, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=404, detail="QR code not found")
     return db_qr_code
 
-@app.get("/qrcodes/{qr_code_id}/image")
+@app.get("/qrcodes/{qr_code_id}/image", summary="Получить изображение QR-кода")
 async def get_qr_code_image(qr_code_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Генерирует и возвращает PNG-изображение QR-кода по его UUID."""
     db_qr_code = await crud.get_qr_code(db, qr_code_id=qr_code_id)
     if db_qr_code is None:
         raise HTTPException(status_code=404, detail="QR code not found")
@@ -66,13 +73,18 @@ async def update_qr_code_status(
         raise HTTPException(status_code=404, detail="QR code not found")
     return db_qr_code
 
-@app.get("/scanner", response_class=FileResponse)
+@app.get("/scanner", response_class=FileResponse, summary="Получить страницу сканера")
 async def get_scanner_page():
+    """Отдает HTML-страницу веб-приложения для сканирования QR-кодов."""
     return "frontend/scanner.html"
 
 
-@app.post("/check_qr/{qr_code_id}")
+@app.post("/check_qr/{qr_code_id}", summary="Проверить QR-код")
 async def check_qr_code(qr_code_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Эндпоинт для веб-сканера. Проверяет QR-код, обновляет его статус на 'used'
+    и возвращает информацию о пользователе.
+    """
     db_qr_code = await crud.get_qr_code(db, qr_code_id=qr_code_id)
     
     if not db_qr_code:

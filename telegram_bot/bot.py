@@ -23,7 +23,7 @@ ADMIN_IDS = [int(admin_id) for admin_id in os.getenv("ADMIN_IDS", "0").split(","
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Отправляет приветственное сообщение по команде /start."""
+    """Обрабатывает команду /start. Приветствует пользователя и информирует админов."""
     user = update.effective_user
     await update.message.reply_html(
         f"Привет, {user.mention_html()}!\n\n"
@@ -37,7 +37,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def get_qr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Создает и отправляет пользователю QR-код."""
+    """Обрабатывает команду /get_qr. Запрашивает у бэкенда QR-код и отправляет его пользователю."""
     user = update.effective_user
     telegram_id = str(user.id)
     logger.info(f"User {telegram_id} ({user.first_name}) requested a QR code.")
@@ -89,29 +89,44 @@ async def get_qr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Отправляет кнопку для запуска Web App сканера (только для админов)."""
+    """(Только для админов) Отправляет кнопку для запуска Web App сканера."""
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
         return
 
-    # ЗАМЕНА: URL должен быть HTTPS. Для локальной разработки используем ngrok или аналог.
-    # Пока что оставим заглушку. Вам нужно будет заменить NGROK_URL на ваш реальный адрес.
-    scanner_url = f"{os.getenv('PUBLIC_URL', 'YOUR_PUBLIC_HTTPS_URL_HERE')}/scanner"
-
-    keyboard = [
-        [InlineKeyboardButton("🚀 Открыть сканер", web_app=WebAppInfo(url=scanner_url))]
-    ]
+    public_url = os.getenv('PUBLIC_URL')
+    if not public_url:
+        await update.message.reply_text("Ошибка: Публичный URL (PUBLIC_URL) не настроен в .env файле. Сканирование невозможно.")
+        return
+    
+    if not public_url.startswith("https://"):
+        await update.message.reply_text(
+            "Ошибка: Публичный URL должен начинаться с https://. "
+            "Пожалуйста, убедитесь, что вы используете ngrok или аналогичный сервис и правильно указали URL."
+        )
+        return
+        
+    scanner_url = f"{public_url}/scanner"
+    # Создаем кнопку, которая открывает Web App
+    keyboard = [[InlineKeyboardButton("🚀 Открыть сканер", web_app=WebAppInfo(url=scanner_url))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Отправляем сообщение с этой кнопкой
     await update.message.reply_text(
         "Нажмите кнопку ниже, чтобы открыть камеру и начать сканирование.",
         reply_markup=reply_markup
     )
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Логирует ошибки, полученные от Telegram."""
+    logger.error("Произошло исключение при обработке обновления:", exc_info=context.error)
+
+
 def main() -> None:
-    """Запускает бота."""
+    """Основная функция: настраивает и запускает бота."""
     if not TELEGRAM_BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN не найден в .env файле!")
+        logger.error("Токен бота не найден в .env файле! Завершение работы.")
         return
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -119,6 +134,8 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("get_qr", get_qr))
     application.add_handler(CommandHandler("scan", scan_command))
+    
+    application.add_error_handler(error_handler)
 
     logger.info("Starting bot...")
     application.run_polling()
