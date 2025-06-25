@@ -54,22 +54,15 @@
         function onScanSuccess(decodedText, decodedResult) {
             const currentTime = Date.now();
             if (currentTime - lastScanTime < scanCooldown) {
-                // Игнорируем сканирование, если оно слишком частое
                 return;
             }
             lastScanTime = currentTime;
 
             console.log(`Scan result: ${decodedText}`);
-            
-            // Вибрация для обратной связи
             if (window.navigator.vibrate) {
                 window.navigator.vibrate(200);
             }
-
-            // Получаем telegram_id сканирующего (админа)
             const adminId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-
-            // Отправляем запрос на наш backend с admin_telegram_id
             fetch(`/check_qr/${decodedText}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -84,7 +77,6 @@
                 } else {
                     resultDiv.className = 'error';
                 }
-                // Закрываем Web App сразу же
                 if (Telegram.WebApp) {
                     Telegram.WebApp.close();
                 }
@@ -98,18 +90,27 @@
         }
 
         function onScanFailure(error) {
-            // Сканер не нашел QR-код, ничего не делаем
+            // Неудачное сканирование — ничего не делаем
         }
 
-        // Инициализация сканера
-        document.addEventListener('DOMContentLoaded', (event) => {
+        document.addEventListener('DOMContentLoaded', async () => {
             Telegram.WebApp.ready();
-
-            let html5QrcodeScanner = new Html5QrcodeScanner(
-                "qr-reader", 
-                { fps: 10, qrbox: {width: 250, height: 250}, facingMode: { exact: "environment" } },
-                /* verbose= */ false);
-            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+            console.log('DOM loaded, initializing QR scanner...');
+            const qrReader = new Html5Qrcode("qr-reader");
+            try {
+                await qrReader.start(
+                    { facingMode: { exact: "environment" } },
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
+                    onScanSuccess,
+                    onScanFailure
+                );
+                console.log('QR scanner started');
+            } catch (e) {
+                console.error('Ошибка запуска камеры:', e);
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'error';
+                resultDiv.textContent = 'Не удалось запустить камеру: ' + e;
+            }
         });
     </script>
 
