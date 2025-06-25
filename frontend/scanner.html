@@ -68,13 +68,68 @@
             background: #dc3545;
             color: #fff;
         }
+        /* Модальное окно результата */
+        #result-modal {
+            display: none;
+            position: fixed;
+            left: 0; top: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        #result-modal .modal-content {
+            background: #222;
+            border-radius: 16px;
+            padding: 32px 24px 24px 24px;
+            text-align: center;
+            min-width: 280px;
+            max-width: 90vw;
+            box-shadow: 0 4px 32px #000a;
+        }
+        #result-modal.success .modal-content {
+            border: 3px solid #28a745;
+        }
+        #result-modal.error .modal-content {
+            border: 3px solid #dc3545;
+        }
+        #result-modal .modal-message {
+            font-size: 1.3em;
+            margin-bottom: 24px;
+            color: #fff;
+        }
+        #result-modal.success .modal-message {
+            color: #28a745;
+        }
+        #result-modal.error .modal-message {
+            color: #dc3545;
+        }
+        #close-modal-btn {
+            background: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 14px 32px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #result-modal.error #close-modal-btn {
+            background: #dc3545;
+        }
     </style>
 </head>
 <body>
 
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
-    <button id="scan-result-btn"></button>
+    <div id="result-modal">
+        <div class="modal-content">
+            <div class="modal-message"></div>
+            <button id="close-modal-btn">Закрыть</button>
+        </div>
+    </div>
 
     <script>
         const resultDiv = document.getElementById('qr-reader-results');
@@ -82,8 +137,29 @@
         const resultBtn = document.getElementById('scan-result-btn');
         let lastScanTime = 0;
         const scanCooldown = 3000; // 3 секунды
+        let qrReaderInstance = null;
+        let scanStopped = false;
+
+        function showResultModal(status, message) {
+            const modal = document.getElementById('result-modal');
+            const msgDiv = modal.querySelector('.modal-message');
+            const closeBtn = document.getElementById('close-modal-btn');
+            modal.className = status;
+            msgDiv.textContent = message;
+            modal.style.display = 'flex';
+            closeBtn.onclick = () => {
+                if (Telegram.WebApp) {
+                    Telegram.WebApp.close();
+                }
+            };
+        }
 
         function onScanSuccess(decodedText, decodedResult) {
+            if (scanStopped) return;
+            scanStopped = true;
+            if (qrReaderInstance) {
+                qrReaderInstance.stop().catch(()=>{});
+            }
             const currentTime = Date.now();
             if (currentTime - lastScanTime < scanCooldown) {
                 return;
@@ -102,43 +178,15 @@
             })
             .then(response => response.json())
             .then(data => {
-                resultDiv.style.display = 'block';
-                resultDiv.textContent = data.message;
-                resultBtn.style.display = 'block';
                 if (data.status === 'ok') {
-                    resultDiv.className = 'success';
-                    qrReaderDiv.classList.remove('error-border');
-                    qrReaderDiv.classList.add('success-border');
-                    resultBtn.className = 'success';
-                    resultBtn.textContent = '✅ Сканирование успешно! Закрыть';
+                    showResultModal('success', data.message);
                 } else {
-                    resultDiv.className = 'error';
-                    qrReaderDiv.classList.remove('success-border');
-                    qrReaderDiv.classList.add('error-border');
-                    resultBtn.className = 'error';
-                    resultBtn.textContent = '⛔ Ошибка сканирования! Закрыть';
+                    showResultModal('error', data.message);
                 }
-                resultBtn.onclick = () => {
-                    if (Telegram.WebApp) {
-                        Telegram.WebApp.close();
-                    }
-                };
             })
             .catch(error => {
                 console.error('Error:', error);
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'error';
-                resultDiv.textContent = 'Ошибка сети при проверке кода.';
-                resultBtn.style.display = 'block';
-                qrReaderDiv.classList.remove('success-border');
-                qrReaderDiv.classList.add('error-border');
-                resultBtn.className = 'error';
-                resultBtn.textContent = '⛔ Ошибка сети! Закрыть';
-                resultBtn.onclick = () => {
-                    if (Telegram.WebApp) {
-                        Telegram.WebApp.close();
-                    }
-                };
+                showResultModal('error', 'Ошибка сети при проверке кода.');
             });
         }
 
@@ -149,9 +197,10 @@
         document.addEventListener('DOMContentLoaded', async () => {
             Telegram.WebApp.ready();
             console.log('DOM loaded, initializing QR scanner...');
-            const qrReader = new Html5Qrcode("qr-reader");
+            qrReaderInstance = new Html5Qrcode("qr-reader");
+            scanStopped = false;
             try {
-                await qrReader.start(
+                await qrReaderInstance.start(
                     { facingMode: { exact: "environment" } },
                     { fps: 10, qrbox: { width: 250, height: 250 } },
                     onScanSuccess,
@@ -160,9 +209,7 @@
                 console.log('QR scanner started');
             } catch (e) {
                 console.error('Ошибка запуска камеры:', e);
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'error';
-                resultDiv.textContent = 'Не удалось запустить камеру: ' + e;
+                showResultModal('error', 'Не удалось запустить камеру: ' + e);
             }
         });
     </script>
