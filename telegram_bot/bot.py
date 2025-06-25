@@ -94,24 +94,10 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if user_id not in ADMIN_IDS:
         return
 
-    public_url = os.getenv('PUBLIC_URL')
-    if not public_url:
-        await update.message.reply_text("Ошибка: Публичный URL (PUBLIC_URL) не настроен в .env файле. Сканирование невозможно.")
-        return
-    
-    if not public_url.startswith("https://"):
-        await update.message.reply_text(
-            "Ошибка: Публичный URL должен начинаться с https://. "
-            "Пожалуйста, убедитесь, что вы используете ngrok или аналогичный сервис и правильно указали URL."
-        )
-        return
-        
-    scanner_url = f"{public_url}/scanner"
-    # Создаем кнопку, которая открывает Web App
+    scanner_url = "https://qr-project-elpr.onrender.com/frontend/scanner.html"
     keyboard = [[InlineKeyboardButton("🚀 Открыть сканер", web_app=WebAppInfo(url=scanner_url))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Отправляем сообщение с этой кнопкой
     await update.message.reply_text(
         "Нажмите кнопку ниже, чтобы открыть камеру и начать сканирование.",
         reply_markup=reply_markup

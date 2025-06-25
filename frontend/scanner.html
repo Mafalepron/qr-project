@@ -84,12 +84,10 @@
                 } else {
                     resultDiv.className = 'error';
                 }
-                // Закрываем Web App через 3 секунды
-                setTimeout(() => {
-                    if (Telegram.WebApp) {
-                        Telegram.WebApp.close();
-                    }
-                }, scanCooldown);
+                // Закрываем Web App сразу же
+                if (Telegram.WebApp) {
+                    Telegram.WebApp.close();
+                }
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -109,7 +107,7 @@
 
             let html5QrcodeScanner = new Html5QrcodeScanner(
                 "qr-reader", 
-                { fps: 10, qrbox: {width: 250, height: 250} },
+                { fps: 10, qrbox: {width: 250, height: 250}, facingMode: { exact: "environment" } },
                 /* verbose= */ false);
             html5QrcodeScanner.render(onScanSuccess, onScanFailure);
         });
