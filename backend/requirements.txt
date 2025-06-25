@@ -2,5 +2,10 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 aiosqlite
+<<<<<<< HEAD
 qrcode[pil]
 httpx 
+=======
+qrcode[pil] 
+httpx
+>>>>>>> 20fce01e8709eae98dd93756d1bcc8ae11859220
