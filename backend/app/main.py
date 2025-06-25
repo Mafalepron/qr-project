@@ -103,6 +103,38 @@ admin_stats = {}
 global_success = 0
 global_fail = 0
 
+import asyncio
+from sqlalchemy import update
+
+# Фоновая задача для сохранения статистики в базу каждые 10 минут
+async def stats_saver():
+    from .models import QRStats
+    global global_success, global_fail, admin_stats
+    while True:
+        await asyncio.sleep(600)  # 10 минут
+        async with AsyncSession(engine) as session:
+            # Общая статистика
+            result = await session.execute(select(QRStats))
+            stats = result.scalars().first()
+            if not stats:
+                stats = QRStats(success_count=0, fail_count=0)
+                session.add(stats)
+                await session.commit()
+                await session.refresh(stats)
+            stats.success_count += global_success
+            stats.fail_count += global_fail
+            await session.commit()
+        # Можно добавить сохранение статистики по админам в отдельную таблицу, если нужно
+        global_success = 0
+        global_fail = 0
+        for admin_id in admin_stats:
+            admin_stats[admin_id]["success"] = 0
+            admin_stats[admin_id]["fail"] = 0
+
+@app.on_event("startup")
+async def start_stats_saver():
+    asyncio.create_task(stats_saver())
+
 async def send_telegram_message(chat_id: str, text: str):
     """Отправляет сообщение пользователю через Telegram Bot API."""
     if not TELEGRAM_BOT_TOKEN:
@@ -117,58 +149,34 @@ async def send_telegram_message(chat_id: str, text: str):
 
 @app.post("/check_qr/{qr_code_id}", summary="Проверить QR-код")
 async def check_qr_code(qr_code_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db)):
-    """
-    Эндпоинт для веб-сканера. Проверяет QR-код, обновляет его статус на 'used',
-    возвращает информацию о пользователе и отправляет уведомления пользователю и админу.
-    """
     db_qr_code = await crud.get_qr_code(db, qr_code_id=qr_code_id)
     data = await request.json() if request.headers.get('content-type', '').startswith('application/json') else {}
     admin_telegram_id = str(data.get('admin_telegram_id')) if data.get('admin_telegram_id') else None
 
-    # Инициализация статистики для админа
     if admin_telegram_id:
         if admin_telegram_id not in admin_stats:
             admin_stats[admin_telegram_id] = {"success": 0, "fail": 0}
 
     global global_success, global_fail
 
-    # Получаем объект статистики
-    result = await db.execute(select(QRStats))
-    stats = result.scalars().first()
-    if not stats:
-        stats = QRStats(success_count=0, fail_count=0)
-        db.add(stats)
-        await db.commit()
-        await db.refresh(stats)
-
-    # Сохраняем значения статистики в переменные
-    stats_success = stats.success_count
-    stats_fail = stats.fail_count
-
     if not db_qr_code:
         if admin_telegram_id:
             admin_stats[admin_telegram_id]["fail"] += 1
-            global_fail += 1
-            stats.fail_count += 1
-            stats_fail = stats.fail_count  # сохраняем до коммита
-            await db.commit()
-            await send_telegram_message(
-                admin_telegram_id,
-                f"❌ Код не найден.\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
-            )
+        global_fail += 1
+        await send_telegram_message(
+            admin_telegram_id,
+            f"❌ Код не найден.\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
+        )
         return JSONResponse(status_code=404, content={"status": "error", "message": "❌ Код не найден"})
     if db_qr_code.status == models.QRCodeStatus.USED:
         await send_telegram_message(db_qr_code.telegram_id, "⛔ Этот QR-код уже был использован ранее. Вход запрещён.")
         if admin_telegram_id:
             admin_stats[admin_telegram_id]["fail"] += 1
-            global_fail += 1
-            stats.fail_count += 1
-            stats_fail = stats.fail_count
-            await db.commit()
-            await send_telegram_message(
-                admin_telegram_id,
-                f"⛔ Этот QR-код уже был использован ранее. Вход запрещён.\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
-            )
+        global_fail += 1
+        await send_telegram_message(
+            admin_telegram_id,
+            f"⛔ Этот QR-код уже был использован ранее. Вход запрещён.\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
+        )
         return JSONResponse(status_code=400, content={"status": "error", "message": f"⚠️ Код уже был использован"})
     if db_qr_code.status == models.QRCodeStatus.ISSUED:
         await crud.update_qr_code_status(db, qr_code_id=qr_code_id, status=models.QRCodeStatus.USED)
@@ -178,25 +186,19 @@ async def check_qr_code(qr_code_id: uuid.UUID, request: Request, db: AsyncSessio
         await send_telegram_message(db_qr_code.telegram_id, "✅ Ваш QR-код успешно отсканирован! Добро пожаловать на мероприятие.")
         if admin_telegram_id:
             admin_stats[admin_telegram_id]["success"] += 1
-            global_success += 1
-            stats.success_count += 1
-            stats_success = stats.success_count
-            await db.commit()
-            await send_telegram_message(
-                admin_telegram_id,
-                f"✅ QR-код успешно отсканирован: {user_info}\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
-            )
+        global_success += 1
+        await send_telegram_message(
+            admin_telegram_id,
+            f"✅ QR-код успешно отсканирован: {user_info}\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
+        )
         return JSONResponse(status_code=200, content={"status": "ok", "message": f"✅ Успех! {user_info}"})
     if admin_telegram_id:
         admin_stats[admin_telegram_id]["fail"] += 1
-        global_fail += 1
-        stats.fail_count += 1
-        stats_fail = stats.fail_count
-        await db.commit()
-        await send_telegram_message(
-            admin_telegram_id,
-            f"❓ Неверный статус кода: {db_qr_code.status.value}\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
-        )
+    global_fail += 1
+    await send_telegram_message(
+        admin_telegram_id,
+        f"❓ Неверный статус кода: {db_qr_code.status.value}\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
+    )
     return JSONResponse(status_code=400, content={"status": "error", "message": f"❓ Неверный статус кода: {db_qr_code.status.value}"})
 
 @app.get("/stats", summary="Получить общую статистику")
