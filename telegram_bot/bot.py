@@ -3,7 +3,7 @@ import os
 import httpx
 from dotenv import load_dotenv
 from telegram import Update, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, ConversationHandler
 from PIL import Image
 from pyzbar.pyzbar import decode
 from io import BytesIO
@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
 ADMIN_IDS = [int(admin_id) for admin_id in os.getenv("ADMIN_IDS", "0").split(",")]
+ADMIN_LOGIN = "admin"
+ADMIN_PASSWORD = "supersecret"
+authorized_admins = set()  # user_id авторизованных админов
 
+LOGIN, PASSWORD = range(2)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает команду /start. Приветствует пользователя и информирует админов."""
@@ -88,16 +92,50 @@ async def get_qr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+async def adminlogin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Введите логин администратора:")
+    return LOGIN
+
+async def adminlogin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['admin_login'] = update.message.text
+    await update.message.reply_text("Введите пароль администратора:")
+    return PASSWORD
+
+async def adminlogin_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    login = context.user_data.get('admin_login')
+    password = update.message.text
+    user_id = update.effective_user.id
+
+    if login == ADMIN_LOGIN and password == ADMIN_PASSWORD:
+        authorized_admins.add(user_id)
+        await update.message.reply_text("✅ Вы авторизованы как администратор!")
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("❌ Неверный логин или пароль. Попробуйте снова.")
+        return ConversationHandler.END
+
+async def adminlogin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Авторизация отменена.")
+    return ConversationHandler.END
+
+adminlogin_conv = ConversationHandler(
+    entry_points=[CommandHandler("adminlogin", adminlogin_start)],
+    states={
+        LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, adminlogin_login)],
+        PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, adminlogin_password)],
+    },
+    fallbacks=[CommandHandler("cancel", adminlogin_cancel)],
+)
+
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """(Только для админов) Отправляет кнопку для запуска Web App сканера."""
     user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
+    if user_id not in authorized_admins:
+        await update.message.reply_text("Доступ запрещён. Авторизуйтесь через /adminlogin.")
         return
-
     scanner_url = "https://qr-project-elpr.onrender.com/frontend/scanner.html"
     keyboard = [[InlineKeyboardButton("🚀 Открыть сканер", web_app=WebAppInfo(url=scanner_url))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
         "Нажмите кнопку ниже, чтобы открыть камеру и начать сканирование.",
         reply_markup=reply_markup
@@ -106,8 +144,8 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("Доступ запрещён.")
+    if user_id not in authorized_admins:
+        await update.message.reply_text("Доступ запрещён. Авторизуйтесь через /adminlogin.")
         return
     try:
         async with httpx.AsyncClient() as client:
@@ -139,7 +177,7 @@ def main() -> None:
     application.add_handler(CommandHandler("get_qr", get_qr))
     application.add_handler(CommandHandler("scan", scan_command))
     application.add_handler(CommandHandler("stats", stats_command))
-    
+    application.add_handler(adminlogin_conv)
     application.add_error_handler(error_handler)
 
     logger.info("Starting bot...")
