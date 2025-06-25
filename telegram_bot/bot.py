@@ -118,6 +118,24 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("Доступ запрещён.")
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{BACKEND_API_URL}/stats", timeout=10)
+            data = response.json()
+            await update.message.reply_text(
+                f"📊 Общая статистика:\n"
+                f"✅ Всего успешно: {data.get('success', 0)}\n"
+                f"⛔ Всего отклонено: {data.get('fail', 0)}"
+            )
+    except Exception as e:
+        await update.message.reply_text("Ошибка при получении статистики.")
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Логирует ошибки, полученные от Telegram."""
     logger.error("Произошло исключение при обработке обновления:", exc_info=context.error)
@@ -134,6 +152,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("get_qr", get_qr))
     application.add_handler(CommandHandler("scan", scan_command))
+    application.add_handler(CommandHandler("stats", stats_command))
     
     application.add_error_handler(error_handler)
 

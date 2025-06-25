@@ -66,32 +66,37 @@
                 window.navigator.vibrate(200);
             }
 
-            // Отправляем запрос на наш backend
-            // ЗАМЕНА: Используем относительный путь, так как backend будет отдавать этот файл
-            fetch(`/check_qr/${decodedText}`, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    resultDiv.style.display = 'block';
-                    resultDiv.textContent = data.message;
-                    if (data.status === 'ok') {
-                        resultDiv.className = 'success';
-                    } else {
-                        resultDiv.className = 'error';
-                    }
-                    
-                    // Закрываем Web App через 3 секунды
-                    setTimeout(() => {
-                        if (Telegram.WebApp) {
-                            Telegram.WebApp.close();
-                        }
-                    }, scanCooldown);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    resultDiv.style.display = 'block';
+            // Получаем telegram_id сканирующего (админа)
+            const adminId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+            // Отправляем запрос на наш backend с admin_telegram_id
+            fetch(`/check_qr/${decodedText}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ admin_telegram_id: adminId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = data.message;
+                if (data.status === 'ok') {
+                    resultDiv.className = 'success';
+                } else {
                     resultDiv.className = 'error';
-                    resultDiv.textContent = 'Ошибка сети при проверке кода.';
-                });
+                }
+                // Закрываем Web App через 3 секунды
+                setTimeout(() => {
+                    if (Telegram.WebApp) {
+                        Telegram.WebApp.close();
+                    }
+                }, scanCooldown);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'error';
+                resultDiv.textContent = 'Ошибка сети при проверке кода.';
+            });
         }
 
         function onScanFailure(error) {
