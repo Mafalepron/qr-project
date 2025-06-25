@@ -150,8 +150,8 @@ async def check_qr_code(qr_code_id: uuid.UUID, request: Request, db: AsyncSessio
             admin_stats[admin_telegram_id]["fail"] += 1
             global_fail += 1
             stats.fail_count += 1
+            stats_fail = stats.fail_count  # сохраняем до коммита
             await db.commit()
-            stats_fail = stats.fail_count  # обновляем после коммита
             await send_telegram_message(
                 admin_telegram_id,
                 f"❌ Код не найден.\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
@@ -163,8 +163,8 @@ async def check_qr_code(qr_code_id: uuid.UUID, request: Request, db: AsyncSessio
             admin_stats[admin_telegram_id]["fail"] += 1
             global_fail += 1
             stats.fail_count += 1
-            await db.commit()
             stats_fail = stats.fail_count
+            await db.commit()
             await send_telegram_message(
                 admin_telegram_id,
                 f"⛔ Этот QR-код уже был использован ранее. Вход запрещён.\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
@@ -180,8 +180,8 @@ async def check_qr_code(qr_code_id: uuid.UUID, request: Request, db: AsyncSessio
             admin_stats[admin_telegram_id]["success"] += 1
             global_success += 1
             stats.success_count += 1
-            await db.commit()
             stats_success = stats.success_count
+            await db.commit()
             await send_telegram_message(
                 admin_telegram_id,
                 f"✅ QR-код успешно отсканирован: {user_info}\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
@@ -191,8 +191,8 @@ async def check_qr_code(qr_code_id: uuid.UUID, request: Request, db: AsyncSessio
         admin_stats[admin_telegram_id]["fail"] += 1
         global_fail += 1
         stats.fail_count += 1
-        await db.commit()
         stats_fail = stats.fail_count
+        await db.commit()
         await send_telegram_message(
             admin_telegram_id,
             f"❓ Неверный статус кода: {db_qr_code.status.value}\n\nВаша статистика:\n  ✅ Успешно: {admin_stats[admin_telegram_id]['success']}\n  ⛔ Отклонено: {admin_stats[admin_telegram_id]['fail']}\n\nОбщая статистика:\n  ✅ Всего успешно: {global_success}\n  ⛔ Всего отклонено: {global_fail}"
