@@ -7,12 +7,17 @@ import uuid
 import httpx
 import os
 from sqlalchemy import select, update
+from fastapi.staticfiles import StaticFiles
 
 from . import crud, models, schemas
 from .database import engine, get_db, Base
 from .models import QRStats
 
 app = FastAPI(title="QR Code Service")
+
+# Раздача статических файлов из папки frontend
+frontend_path = os.path.join(os.path.dirname(__file__), '../../frontend')
+app.mount("/frontend", StaticFiles(directory=frontend_path), name="frontend")
 
 # Создаем таблицы в БД при старте
 # В реальном проекте лучше использовать миграции (Alembic)
